@@ -9,7 +9,7 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import gc
-
+from sklearn.preprocessing import LabelEncoder
 
 
 def add_column(x, colvalue_list, colname):
@@ -273,11 +273,125 @@ train['TransactionAmt_decimal'] = ((train['TransactionAmt'] - train['Transaction
 test['TransactionAmt_decimal'] = ((test['TransactionAmt'] - test['TransactionAmt'].astype(int)) * 1000).astype(int)
 
 # New feature- day of week in which a transaction happened
+train['Transaction_day_of_week'] = np.floor((train['TransactionDT'] / (3600 * 24) - 1) % 7)
+test['Transaction_day_of_week'] = np.floor((test['TransactionDT'] / (3600 * 24) - 1) % 7)
+
+# new feature- hour of day in which a transaction happened
+train['Transaction_hour'] = np.floor(train['TransactionDT'] / 3600) % 24
+test['Transaction_hour'] = np.floor(test['TransactionDT'] / 3600) % 24
 
 
+for feature in ['id_02__id_20', 'id_02__D8', 'D11__DeviceInfo',
+                'DeviceInfo__P_emaildomain', 'P_emaildomain__C2',
+                'card2__dist1', 'card1__card5', 'card2__id_20',
+                'card5__P_emaildomain', 'addr1__card1']:
+    f1, f2 = feature.split("__")
+    train[feature] = train[f1].astype(str) + '_' + train[f2].astype(str)
+    test[feature] = test[f1].astype(str) + '_' + test[f2].astype(str)
+
+    le = LabelEncoder()
+    le.fit(list(train[feature].astype(str).values) + list(test[feature].astype(str).values))
+    train[feature] = le.transform(list(train[feature].astype(str).values))
+    test[feature] = le.transform(list(test[feature].astype(str).values))
+
+# Encoding - count encoding for both train and test
+for feature in ['card1', 'card2', 'card3', 'card4', 'card5', 'card6', 'id_36']:
+    train[feature + '_count_full'] = \
+        train[feature].map(pd.concat([train[feature], test[feature]], ignore_index=True).value_counts(dropna=False))
+    test[feature + '_count_full'] = \
+        test[feature].map(pd.concat([train[feature], test[feature]], ignore_index=True).value_counts(dropna=False))
+
+# Encoding - count encoding separately for train and test
+for feature in ['id_01', 'id_31', 'id_33', 'id_36']:
+    if __name__ == '__main__':
+        train[feature + '_count_dist'] = train[feature].map(train[feature].value_counts(dropna=False))
+        test[feature + '_count_dist'] = test[feature].map(test[feature].value_counts(dropna=False))
 
 
+# https://www.kaggle.com/c/ieee-fraud-detection/discussion/100499
+emails = {'gmail': 'google', 'att.net': 'att', 'twc.com': 'spectrum', 'scranton.edu': 'other',
+          'optonline.net': 'other', 'hotmail.co.uk': 'microsoft', 'comcast.net': 'other',
+          'yahoo.com.mx': 'yahoo', 'yahoo.fr': 'yahoo', 'yahoo.es': 'yahoo',
+          'charter.net': 'spectrum', 'live.com': 'microsoft', 'aim.com': 'aol',
+          'hotmail.de': 'microsoft', 'centurylink.net': 'centurylink', 'gmail.com': 'google',
+          'me.com': 'apple', 'earthlink.net': 'other', 'gmx.de': 'other',
+          'web.de': 'other', 'cfl.rr.com': 'other', 'hotmail.com': 'microsoft',
+          'protonmail.com': 'other', 'hotmail.fr': 'microsoft', 'windstream.net': 'other',
+          'outlook.es': 'microsoft', 'yahoo.co.jp': 'yahoo', 'yahoo.de': 'yahoo',
+          'servicios-ta.com': 'other', 'netzero.net': 'other', 'suddenlink.net': 'other',
+          'roadrunner.com': 'other', 'sc.rr.com': 'other', 'live.fr': 'microsoft',
+          'verizon.net': 'yahoo', 'msn.com': 'microsoft', 'q.com': 'centurylink',
+          'prodigy.net.mx': 'att', 'frontier.com': 'yahoo', 'anonymous.com': 'other',
+          'rocketmail.com': 'yahoo', 'sbcglobal.net': 'att', 'frontiernet.net': 'yahoo',
+          'ymail.com': 'yahoo', 'outlook.com': 'microsoft', 'mail.com': 'other',
+          'bellsouth.net': 'other', 'embarqmail.com': 'centurylink', 'cableone.net': 'other',
+          'hotmail.es': 'microsoft', 'mac.com': 'apple', 'yahoo.co.uk': 'yahoo',
+          'netzero.com': 'other', 'yahoo.com': 'yahoo', 'live.com.mx': 'microsoft',
+          'ptd.net': 'other', 'cox.net': 'other', 'aol.com': 'aol', 'juno.com': 'other', 'icloud.com': 'apple'}
 
+us_emails = ['gmail', 'net', 'edu']
+for c in ['P_emaildomain', 'R_emaildomain']:
+    train[c + '_bin'] = train[c].map(emails)
+    test[c + '_bin'] = test[c].map(emails)
+
+    train[c + '_suffix'] = train[c].map(lambda x: str(x).split('.')[-1])
+    test[c + '_suffix'] = test[c].map(lambda x: str(x).split('.')[-1])
+
+    train[c + '_suffix'] = train[c + '_suffix'].map(lambda x: x if str(x) not in us_emails else 'us')
+    test[c + '_suffix'] = test[c + '_suffix'].map(lambda x: x if str(x) not in us_emails else 'us')
+
+
+for col in train.columns:
+    if train[col].dtype == 'object':
+        le = LabelEncoder()
+        le.fit(list(train[col].astype(str).values) + list(test[col].astype(str).values))
+        train[col] = le.transform(list(train[col].astype(str).values))
+        test[col] = le.transform(list(test[col].astype(str).values))
+
+
+train = reduce_mem_usage(train)
+test = reduce_mem_usage(test)
+
+X = train.sort_values('TransactionDT').drop(['isFraud', 'TransactionDT'], axis=1)
+y = train.sort_values('TransactionDT')['isFraud']
+
+X_test = test.drop(['TransactionDT'], axis=1)
+
+del train, test
+gc.collect()
+
+from sklearn.model_selection import KFold
+import lightgbm as ldb
+
+params = {'num_leaves': 491,
+          'min_child_weight': 0.03454472573214212,
+          'feature_fraction': 0.3797454081646243,
+          'bagging_fraction': 0.4181193142567742,
+          'min_data_in_leaf': 106,
+          'objective': 'binary',
+          'max_depth': -1,
+          'learning_rate': 0.006883242363721497,
+          "boosting_type": "gbdt",
+          "bagging_seed": 11,
+          "metric": 'auc',
+          "verbosity": -1,
+          'reg_alpha': 0.3899927210061127,
+          'reg_lambda': 0.6485237330340494,
+          'random_state': 47,
+         }
+
+NFOLDS = 5
+folds = KFold(n_splits=NFOLDS)
+
+columns = X.columns
+splits = folds.split(X, y)
+
+y_preds = np.zeros(X_test.shape[0])
+y_oof = np.zeros(X.shape[0])
+score = 0
+
+feature_importances = pd.DataFrame()
+feature_importances['feature'] = columns
 
 
 
