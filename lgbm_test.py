@@ -171,7 +171,6 @@ def id_split(dataframe):
 
 
 
-
 identity_file = "D:/Users/saili/Documents/kaggle/ieee-fraud-detection/train_identity.csv" #
 transaction_file = "D:/Users/saili/Documents/kaggle/ieee-fraud-detection/train_transaction.csv" #(590540, 394)
 
@@ -189,6 +188,8 @@ test_identity = pd.read_csv(test_identity_file, index_col="TransactionID")
 print "successfully loaded test_identity"
 test_transaction = pd.read_csv(test_transaction_file, index_col='TransactionID')
 print "successfully loaded test_transaction"
+sub = pd.read_csv(sample_file)
+print 'successfully loaded sample_submission'
 
 train_identity = id_split(train_identity)
 test_identity = id_split(test_identity)
@@ -204,6 +205,7 @@ print "Train dataset has %s rows and %s columns" % (train.shape[0], train.shape[
 print "Test dataset has %s rows and %s columns" % (test.shape[0], test.shape[1])
 
 gc.collect()
+
 
 useful_features = ['TransactionAmt', 'ProductCD', 'card1', 'card2', 'card3',
                    'card4', 'card5', 'card6', 'addr1', 'addr2', 'dist1',
@@ -361,7 +363,7 @@ del train, test
 gc.collect()
 
 from sklearn.model_selection import KFold
-import lightgbm as ldb
+import lightgbm as lgb
 
 params = {'num_leaves': 491,
           'min_child_weight': 0.03454472573214212,
@@ -393,7 +395,38 @@ score = 0
 feature_importances = pd.DataFrame()
 feature_importances['feature'] = columns
 
+from sklearn.metrics import roc_auc_score
 
+for fold_n, (train_index, valid_index) in enumerate(splits):
+    X_train, X_valid = X[columns].iloc[train_index], X[columns].iloc[valid_index]
+    y_train, y_valid = y.iloc[train_index], y.iloc[valid_index]
+    dtrain = lgb.Dataset(X_train, label=y_train)
+    dvalid = lgb.Dataset(X_valid, label=y_valid)
+    clf = lgb.train(params, dtrain, 10000, valid_sets=[dtrain, dvalid],
+                    verbose_eval=200, early_stopping_rounds=500)
+    col = 'fold_' + str(fold_n)
+    feature_importances[col] = clf.feature_importance()
+    y_pred_valid = clf.predict(X_valid)
+    y_oof[valid_index] = y_pred_valid
+    print "Fold {%s + 1} | AUC: {roc_auc_score(y_valid, y_pred_valid)}"
+    score += roc_auc_score(y_valid, y_pred_valid) / NFOLDS
+    y_preds += clf.predict(X_test) / NFOLDS
+
+    del X_train, X_valid, y_train, y_valid
+    gc.collect()
+
+print "Mean AUC = %s" % score
+print "Out of folds AUC = %s" % roc_auc_score(y, y_oof)
+
+sub['isFraud'] = y_preds
+sub.to_csv("D:/Users/saili/Documents/kaggle/ieee-fraud-detection/result.csv")
+
+feature_importances['average'] = \
+    feature_importances[['fold_'+str(fold_n) for fold_n in range(folds.n_splits)]].mean(axis=1)
+plt.figure(figsize=(16, 16))
+sns.barplot(data=feature_importances.sort_values(by='average', ascending=False).head(50), x='average', y='feature');
+plt.title('50 TOP feature importance over {} folds average'.format(folds.n_splits))
+plt.show()
 
 # identity_data = pd.read_csv(identity_file)
 # transaction_data = pd.read_csv(transaction_file)
