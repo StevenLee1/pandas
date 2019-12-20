@@ -1,14 +1,22 @@
-import numpy as np
-import pandas as pd
-import seaborn as sns
+from captcha.image import ImageCaptcha
 import matplotlib.pyplot as plt
-from scipy import stats
+import numpy as np
+import random
 
-import seaborn as sns
-sns.set(style="darkgrid")
+# %matplotlib inline
+# %config InlineBackend.figure_format = 'retina'
 
-# Load an example dataset with long-form data
-fmri = sns.load_dataset("fmri")
-sns.lineplot(x="timepoint", y="signal",
-             hue="region", style="event",
-             data=fmri)
+import string
+characters = string.digits + string.ascii_uppercase
+print(characters)
+
+width, height, n_len, n_class = 170, 80, 4, len(characters)
+
+generator = ImageCaptcha(width=width, height=height)
+random_str = ''.join([random.choice(characters) for j in range(4)])
+img = generator.generate_image(random_str)
+
+plt.imshow(img)
+
+plt.title(random_str)
+plt.savefig("./imgs/%s.jpg" % random_str)

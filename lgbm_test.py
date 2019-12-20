@@ -427,7 +427,7 @@ plt.figure(figsize=(16, 16))
 sns.barplot(data=feature_importances.sort_values(by='average', ascending=False).head(50), x='average', y='feature');
 plt.title('50 TOP feature importance over {} folds average'.format(folds.n_splits))
 plt.show()
-
+pd.concat()
 # identity_data = pd.read_csv(identity_file)
 # transaction_data = pd.read_csv(transaction_file)
 # transaction_data = reduce_mem_usage(transaction_data)
